@@ -4,6 +4,7 @@ import SwiftUI
 struct MonitorView: View {
     @Environment(SystemMetrics.self) private var metrics
     @Environment(ProcessMonitor.self) private var processes
+    @Environment(SpeedTestService.self) private var speedTest
 
     var body: some View {
         ScrollView {
@@ -128,7 +129,7 @@ struct MonitorView: View {
             .font(.callout.monospacedDigit())
             NetworkChart(points: metrics.netHistory)
             VStack(spacing: 3) {
-                InfoRow(label: "本机 IP", value: metrics.localIP ?? "未连接")
+                InfoRow(label: "本机 IP", value: metrics.localIP ?? "未连接", copyable: metrics.localIP != nil)
                 HStack {
                     Text("公网 IP").foregroundStyle(.secondary)
                     Spacer()
@@ -136,6 +137,9 @@ struct MonitorView: View {
                         ProgressView().controlSize(.mini)
                     } else if let ip = metrics.publicIP {
                         Text(ip).textSelection(.enabled)
+                        if ip.first?.isNumber == true || ip.contains(":") {
+                            CopyButton(text: ip)
+                        }
                     } else {
                         Button("点击获取") { Task { await metrics.fetchPublicIP() } }
                             .buttonStyle(.link)
@@ -144,6 +148,60 @@ struct MonitorView: View {
                 InfoRow(label: "开机以来", value: "↓ \(ByteFormatter.string(metrics.netTotalDown))  ↑ \(ByteFormatter.string(metrics.netTotalUp))")
             }
             .font(.caption)
+            Divider()
+            speedTestSection
+        }
+    }
+
+    private var speedTestSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("网络测速")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                if speedTest.running {
+                    ProgressView().controlSize(.mini)
+                    if let started = speedTest.startedAt {
+                        Text("测速中 \(started, style: .timer)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("取消") { speedTest.cancel() }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                } else {
+                    Button(speedTest.result == nil ? "开始测速" : "重新测速") { speedTest.start() }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                        .help("使用系统自带的 networkQuality,约需 20 秒,会消耗一定流量")
+                }
+            }
+            if let error = speedTest.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if let result = speedTest.result {
+                HStack(spacing: 12) {
+                    StatText(label: "下载", value: ByteFormatter.mbps(result.downloadBps), color: .green)
+                    StatText(label: "上传", value: ByteFormatter.mbps(result.uploadBps), color: .blue)
+                    Spacer()
+                }
+                HStack(spacing: 12) {
+                    if let latency = result.latencyMs {
+                        StatText(label: "延迟", value: String(format: "%.0f ms", latency))
+                    }
+                    if let rpm = result.responsivenessRPM, let level = result.responsivenessLevel {
+                        StatText(label: "响应性", value: "\(level)(\(Int(rpm)) RPM)")
+                            .help("负载下每分钟可完成的往返次数,越高越好(苹果标准:<200 低,>1000 高)")
+                    }
+                    Spacer()
+                    Text(result.date, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
     }
 }
@@ -193,13 +251,37 @@ private struct StatText: View {
 private struct InfoRow: View {
     let label: String
     let value: String
+    var copyable = false
 
     var body: some View {
         HStack {
             Text(label).foregroundStyle(.secondary)
             Spacer()
             Text(value).monospacedDigit().textSelection(.enabled)
+            if copyable {
+                CopyButton(text: value)
+            }
         }
+    }
+}
+
+private struct CopyButton: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .foregroundStyle(copied ? .green : .secondary)
+                .frame(width: 12)
+        }
+        .buttonStyle(.borderless)
+        .help("复制")
     }
 }
 

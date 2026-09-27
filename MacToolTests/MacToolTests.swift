@@ -106,6 +106,113 @@ final class LeftoverMatcherTests: XCTestCase {
     }
 }
 
+final class ThresholdTriggerTests: XCTestCase {
+    func testFiresOnceUntilRearmed() {
+        var trigger = ThresholdTrigger(threshold: 0.9, rearm: 0.8)
+        XCTAssertFalse(trigger.update(0.5))
+        XCTAssertTrue(trigger.update(0.95))
+        XCTAssertFalse(trigger.update(0.97))
+        XCTAssertFalse(trigger.update(0.85))   // 未低于 rearm,不重新布防
+        XCTAssertFalse(trigger.update(0.95))
+        XCTAssertFalse(trigger.update(0.7))
+        XCTAssertTrue(trigger.update(0.92))
+    }
+
+    func testSustain() {
+        let t0 = Date(timeIntervalSince1970: 0)
+        var trigger = ThresholdTrigger(threshold: 0.9, rearm: 0.7, sustain: 120)
+        XCTAssertFalse(trigger.update(0.95, now: t0))
+        XCTAssertFalse(trigger.update(0.95, now: t0.addingTimeInterval(60)))
+        // 中途回落会重新计时
+        XCTAssertFalse(trigger.update(0.5, now: t0.addingTimeInterval(90)))
+        XCTAssertFalse(trigger.update(0.95, now: t0.addingTimeInterval(100)))
+        XCTAssertFalse(trigger.update(0.95, now: t0.addingTimeInterval(200)))
+        XCTAssertTrue(trigger.update(0.95, now: t0.addingTimeInterval(220)))
+    }
+}
+
+final class SpeedTestParserTests: XCTestCase {
+    func testParse() throws {
+        let json = #"{"dl_throughput": 80000000, "ul_throughput": 16000000, "base_rtt": 23.5, "responsiveness": 1234.5, "interface_name": "en0"}"#
+        let result = try XCTUnwrap(SpeedTestParser.parse(Data(json.utf8)))
+        XCTAssertEqual(result.downloadBps, 10_000_000)
+        XCTAssertEqual(result.uploadBps, 2_000_000)
+        XCTAssertEqual(result.latencyMs, 23.5)
+        XCTAssertEqual(result.responsivenessLevel, "高")
+        XCTAssertEqual(result.interface, "en0")
+        XCTAssertEqual(ByteFormatter.mbps(result.downloadBps), "80.0 Mbps")
+        XCTAssertEqual(ByteFormatter.mbps(125_000_000), "1.0 Gbps")
+    }
+
+    func testParseInvalid() {
+        XCTAssertNil(SpeedTestParser.parse(Data("oops".utf8)))
+        XCTAssertNil(SpeedTestParser.parse(Data(#"{"base_rtt": 20}"#.utf8)))
+    }
+}
+
+final class BluetoothBatteryParserTests: XCTestCase {
+    func testParse() {
+        let json = """
+        {"SPBluetoothDataType": [{
+          "device_connected": [
+            {"AirPods Pro": {"device_minorType": "Headphones", "device_batteryLevelLeft": "90%", "device_batteryLevelRight": "85%", "device_batteryLevelCase": "40%"}},
+            {"Magic Mouse": {"device_minorType": "Mouse", "device_batteryLevelMain": "15%"}},
+            {"iPhone": {"device_address": "00:11"}}
+          ],
+          "device_not_connected": [{"Old Keyboard": {"device_batteryLevelMain": "50%"}}]
+        }]}
+        """
+        let devices = BluetoothBatteryParser.parse(Data(json.utf8))
+        XCTAssertEqual(devices.map(\.name), ["AirPods Pro", "Magic Mouse"])
+        XCTAssertEqual(devices[0].levels.map(\.percent), [90, 85, 40])
+        XCTAssertEqual(devices[0].levels.map(\.label), ["左", "右", "充电盒"])
+        XCTAssertEqual(devices[0].symbolName, "airpodspro")
+        XCTAssertEqual(devices[1].levels, [.init(label: nil, percent: 15)])
+        XCTAssertEqual(devices[1].symbolName, "magicmouse")
+    }
+}
+
+@MainActor
+final class ClipboardStoreTests: XCTestCase {
+    private func makeStore() -> ClipboardStore {
+        ClipboardStore(storeURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json"))
+    }
+
+    func testDedupMovesToTopAndKeepsPin() {
+        let store = makeStore()
+        store.add(.text("a"))
+        store.add(.text("b"))
+        store.togglePin(store.items[1])  // 置顶 a
+        store.add(.text("a"))
+        XCTAssertEqual(store.items.count, 2)
+        XCTAssertEqual(store.items[0].content, .text("a"))
+        XCTAssertTrue(store.items[0].pinned)
+    }
+
+    func testPinnedFirstAndSurviveClearAndLimit() {
+        let store = makeStore()
+        store.add(.text("pinned"))
+        store.togglePin(store.items[0])
+        for i in 0..<(ClipboardStore.limit + 5) {
+            store.add(.text("item \(i)"))
+        }
+        XCTAssertEqual(store.items.count, ClipboardStore.limit + 1)
+        XCTAssertEqual(store.sortedItems.first?.content, .text("pinned"))
+        store.clear()
+        XCTAssertEqual(store.items.map(\.content), [.text("pinned")])
+    }
+
+    func testSearch() {
+        let store = makeStore()
+        store.add(.text("Hello World"))
+        store.add(.files(["/Users/me/Documents/report.pdf"]))
+        XCTAssertEqual(store.filtered("world").count, 1)
+        XCTAssertEqual(store.filtered("report").count, 1)
+        XCTAssertEqual(store.filtered("Documents").count, 1)
+        XCTAssertEqual(store.filtered("").count, 2)
+    }
+}
+
 final class MetricMathTests: XCTestCase {
     func testCPUDelta() {
         let prev = CPUSample(user: 0, system: 0, idle: 100, nice: 0)

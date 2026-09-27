@@ -49,6 +49,12 @@ final class BatteryService {
 
     private var notified80 = false
     private var task: Task<Void, Never>?
+    /// 截图/测试用的临时实例不发通知
+    private let alertsEnabled: Bool
+
+    init(alertsEnabled: Bool = true) {
+        self.alertsEnabled = alertsEnabled
+    }
 
     var percentText: String { supported ? "\(percent)%" : "--" }
 
@@ -84,6 +90,9 @@ final class BatteryService {
         readPowerSources()
         readSmartBattery()
         maybeNotify80()
+        if supported, alertsEnabled {
+            AlertMonitor.shared.check(batteryPercent: percent, onAC: onAC)
+        }
     }
 
     // MARK: - IOPSCopyPowerSourcesInfo(电量/充电状态/剩余时间)
@@ -146,15 +155,11 @@ final class BatteryService {
 
     private func maybeNotify80() {
         if percent < 78 { notified80 = false }
-        guard percent >= 80, isCharging,
+        guard percent >= 80, isCharging, alertsEnabled,
               UserDefaults.standard.bool(forKey: AppSettings.notify80Key),
               !notified80 else { return }
         notified80 = true
-        let content = UNMutableNotificationContent()
-        content.title = "电量已达 \(percent)%"
-        content.body = "可以拔掉充电器,有助于延长电池寿命。"
-        let request = UNNotificationRequest(identifier: "battery80", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        Notifier.post(id: "battery80", title: "电量已达 \(percent)%", body: "可以拔掉充电器,有助于延长电池寿命。")
     }
 
     private func intValue(_ value: Any?) -> Int? {

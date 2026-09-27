@@ -2,7 +2,9 @@ import SwiftUI
 
 struct BatteryView: View {
     @Environment(BatteryService.self) private var battery
+    @Environment(BluetoothBatteryService.self) private var bluetooth
     @EnvironmentObject private var settings: AppSettings
+    @AppStorage(AlertKind.lowBattery.storageKey) private var lowBatteryAlert = AlertKind.lowBattery.defaultEnabled
 
     var body: some View {
         ScrollView {
@@ -11,16 +13,56 @@ struct BatteryView: View {
                     overviewCard
                     healthCard
                     detailCard
-                    notifyCard
-                } else {
+                } else if bluetooth.loaded && bluetooth.devices.isEmpty {
                     ContentUnavailableView(
                         "未检测到电池",
                         systemImage: "battery.0percent",
                         description: Text("此 Mac 可能没有内置电池,或权限受限。")
                     )
                 }
+                if !bluetooth.devices.isEmpty {
+                    bluetoothCard
+                }
+                if battery.supported {
+                    notifyCard
+                }
             }
             .padding(10)
+        }
+        .onAppear { bluetooth.start() }
+        .onDisappear { bluetooth.stop() }
+    }
+
+    private var bluetoothCard: some View {
+        GroupBox {
+            VStack(spacing: 6) {
+                ForEach(bluetooth.devices) { device in
+                    HStack(spacing: 8) {
+                        Image(systemName: device.symbolName)
+                            .frame(width: 20)
+                            .foregroundStyle(.secondary)
+                        Text(device.name)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        ForEach(device.levels.indices, id: \.self) { index in
+                            let level = device.levels[index]
+                            HStack(spacing: 2) {
+                                if let label = level.label {
+                                    Text(label).foregroundStyle(.secondary)
+                                }
+                                Text("\(level.percent)%")
+                                    .monospacedDigit()
+                                    .foregroundStyle(level.percent <= 20 ? .red : .primary)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        } label: {
+            Label("蓝牙设备", systemImage: "wave.3.right")
         }
     }
 
@@ -78,11 +120,14 @@ struct BatteryView: View {
 
     private var notifyCard: some View {
         GroupBox {
-            Toggle("充电到 80% 时提醒我", isOn: $settings.batteryNotifyAt80)
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("充电到 80% 时提醒我", isOn: $settings.batteryNotifyAt80)
+                Toggle("电量低于 20% 时提醒我", isOn: $lowBatteryAlert)
+            }
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-            Label("充电提醒", systemImage: "bell.badge")
+            Label("电量提醒", systemImage: "bell.badge")
         }
     }
 

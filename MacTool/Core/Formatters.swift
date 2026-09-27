@@ -29,6 +29,14 @@ enum ByteFormatter {
         if mb < 1000 { return "\(Int(mb.rounded()))M" }
         return String(format: "%.1fG", mb / 1024)
     }
+
+    /// 测速习惯用十进制兆比特:"86.3 Mbps" / "512 Mbps" / "1.2 Gbps"
+    static func mbps(_ bytesPerSecond: Double) -> String {
+        let mbps = max(0, bytesPerSecond) * 8 / 1_000_000
+        if mbps >= 1000 { return String(format: "%.1f Gbps", mbps / 1000) }
+        if mbps >= 100 { return "\(Int(mbps.rounded())) Mbps" }
+        return String(format: "%.1f Mbps", mbps)
+    }
 }
 
 enum DurationFormatter {

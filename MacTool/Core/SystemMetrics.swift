@@ -92,6 +92,12 @@ final class SystemMetrics {
     private var prevDisk: (read: UInt64, write: UInt64, time: Date)?
     private var task: Task<Void, Never>?
     private let historyLimit = 90
+    /// 截图/测试用的临时实例不发通知
+    private let alertsEnabled: Bool
+
+    init(alertsEnabled: Bool = true) {
+        self.alertsEnabled = alertsEnabled
+    }
 
     var memTotal: UInt64 { ProcessInfo.processInfo.physicalMemory }
     var uptime: TimeInterval { ProcessInfo.processInfo.systemUptime }
@@ -142,6 +148,9 @@ final class SystemMetrics {
             append(&gpuHistory, MetricPoint(time: now, value: gpuUsage * 100))
         }
         append(&netHistory, NetPoint(time: now, down: netDownBps, up: netUpBps))
+        if alertsEnabled {
+            AlertMonitor.shared.check(cpuUsage: cpuUsage, memFraction: memFraction, diskUsed: diskUsed, diskTotal: diskTotal)
+        }
     }
 
     private func append<T>(_ history: inout [T], _ point: T) {

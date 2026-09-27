@@ -7,9 +7,11 @@ import XCTest
 @MainActor
 final class ScreenshotTests: XCTestCase {
     func testRenderScreenshots() async throws {
-        let metrics = SystemMetrics()
-        let battery = BatteryService()
-        let clipboard = ClipboardStore()
+        let metrics = SystemMetrics(alertsEnabled: false)
+        let battery = BatteryService(alertsEnabled: false)
+        let clipboard = ClipboardStore(storeURL: FileManager.default.temporaryDirectory.appendingPathComponent("clipboard-shot.json"))
+        let speedTest = SpeedTestService()
+        let bluetooth = BluetoothBatteryService()
         let processes = ProcessMonitor()
         let cleaner = CleanerService()
         let settings = AppSettings()
@@ -50,6 +52,8 @@ final class ScreenshotTests: XCTestCase {
                 .environment(tools)
                 .environment(processes)
                 .environment(uninstaller)
+                .environment(speedTest)
+                .environment(bluetooth)
                 .environmentObject(settings)
             try save(render(view, size: NSSize(width: 380, height: 560)), to: dir, named: name)
         }

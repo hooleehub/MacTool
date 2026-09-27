@@ -28,6 +28,8 @@ struct MacToolApp: App {
     @State private var uninstaller = AppUninstaller()
     @State private var cleaner = CleanerService()
     @State private var tools = ToolService()
+    @State private var speedTest = SpeedTestService()
+    @State private var bluetooth = BluetoothBatteryService()
     @StateObject private var settings = AppSettings()
 
     init() {
@@ -40,6 +42,13 @@ struct MacToolApp: App {
         _metrics = State(initialValue: metrics)
         _battery = State(initialValue: battery)
         _clipboard = State(initialValue: clipboard)
+
+        ClipboardPanelController.shared.store = clipboard
+        GlobalHotKey.shared.action = { ClipboardPanelController.shared.toggle() }
+        // 测试宿主里不抢占全局快捷键
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            GlobalHotKey.shared.apply(ClipboardHotKey.current)
+        }
     }
 
     var body: some Scene {
@@ -52,6 +61,8 @@ struct MacToolApp: App {
                 .environment(tools)
                 .environment(processes)
                 .environment(uninstaller)
+                .environment(speedTest)
+                .environment(bluetooth)
                 .environmentObject(settings)
         } label: {
             MenuBarLabel()
@@ -62,6 +73,7 @@ struct MacToolApp: App {
 
         Settings {
             SettingsView()
+                .environment(clipboard)
                 .environmentObject(settings)
         }
     }

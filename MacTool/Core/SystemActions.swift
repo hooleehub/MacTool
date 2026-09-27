@@ -25,6 +25,48 @@ enum SystemActions {
         run("/usr/bin/killall", ["Finder"])
     }
 
+    /// 未设置时 CreateDesktop 缺省为显示
+    static var desktopIconsShown: Bool {
+        let output = runCapturing("/usr/bin/defaults", ["read", "com.apple.finder", "CreateDesktop"])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return !["0", "false", "FALSE"].contains(output)
+    }
+
+    static func setDesktopIcons(_ shown: Bool) {
+        run("/usr/bin/defaults", ["write", "com.apple.finder", "CreateDesktop", "-bool", shown ? "true" : "false"])
+        run("/usr/bin/killall", ["Finder"])
+    }
+
+    static func restart(_ processName: String) {
+        run("/usr/bin/killall", [processName])
+    }
+
+    /// 可推出的卷:外置/可移除磁盘、磁盘映像、网络卷(不含系统盘)
+    static func ejectableVolumes() -> [URL] {
+        let keys: [URLResourceKey] = [.volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsInternalKey, .volumeIsRootFileSystemKey]
+        let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
+        return volumes.filter { url in
+            guard let values = try? url.resourceValues(forKeys: Set(keys)),
+                  values.volumeIsRootFileSystem != true else { return false }
+            return values.volumeIsEjectable == true || values.volumeIsRemovable == true || values.volumeIsInternal == false
+        }
+    }
+
+    /// 返回 (成功数, 失败的卷名)
+    static func ejectAll() -> (ejected: Int, failed: [String]) {
+        var ejected = 0
+        var failed: [String] = []
+        for url in ejectableVolumes() {
+            do {
+                try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+                ejected += 1
+            } catch {
+                failed.append(url.lastPathComponent)
+            }
+        }
+        return (ejected, failed)
+    }
+
     /// 需要"自动化"权限,首次会弹系统授权框
     static func toggleDarkMode() {
         run("/usr/bin/osascript", ["-e", #"tell application "System Events" to tell appearance preferences to set dark mode to not dark mode"#])
@@ -101,30 +143,122 @@ enum SystemActions {
     }
 }
 
+enum CaffeinateDuration: Int, CaseIterable, Identifiable {
+    case forever = 0
+    case minutes30 = 1800
+    case hour1 = 3600
+    case hours2 = 7200
+    case hours5 = 18000
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .forever: return "一直"
+        case .minutes30: return "30 分钟"
+        case .hour1: return "1 小时"
+        case .hours2: return "2 小时"
+        case .hours5: return "5 小时"
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class ToolService {
+    static let keepDisplayOnKey = "caffeinateKeepDisplayOn"
+
     private(set) var caffeinating = false
+    /// nil 表示不限时
+    private(set) var caffeinateUntil: Date?
     private(set) var hiddenFiles = SystemActions.hiddenFilesShown
+    private(set) var desktopIcons = SystemActions.desktopIconsShown
+    private(set) var ejecting = false
     var message: String?
 
-    private var caffeinateProcess: Process?
-
-    func toggleCaffeinate() {
-        if caffeinating {
-            caffeinateProcess?.terminate()
-            caffeinateProcess = nil
-        } else {
-            // -w 绑定本进程:App 退出/崩溃时 caffeinate 自动结束,不会让 Mac 永久不休眠
-            let pid = String(ProcessInfo.processInfo.processIdentifier)
-            caffeinateProcess = SystemActions.run("/usr/bin/caffeinate", ["-d", "-w", pid])
+    /// 关闭后只阻止系统休眠,屏幕照常按设置熄灭
+    var keepDisplayOn: Bool = UserDefaults.standard.object(forKey: ToolService.keepDisplayOnKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(keepDisplayOn, forKey: Self.keepDisplayOnKey)
+            if caffeinating { startCaffeinate(remainingDuration) }
         }
-        caffeinating.toggle()
+    }
+
+    private var caffeinateProcess: Process?
+    private var caffeinateTimer: Task<Void, Never>?
+
+    private var remainingDuration: TimeInterval {
+        caffeinateUntil.map { max(1, $0.timeIntervalSinceNow) } ?? 0
+    }
+
+    func startCaffeinate(_ duration: CaffeinateDuration) {
+        startCaffeinate(TimeInterval(duration.rawValue))
+    }
+
+    /// seconds 为 0 表示不限时;到时由本 App 结束 caffeinate,不依赖 -t(与 -w 组合时行为不直观)
+    private func startCaffeinate(_ seconds: TimeInterval) {
+        stopCaffeinate()
+        // -w 绑定本进程:App 退出/崩溃时 caffeinate 自动结束,不会让 Mac 永久不休眠
+        let pid = String(ProcessInfo.processInfo.processIdentifier)
+        let process = SystemActions.run("/usr/bin/caffeinate", [keepDisplayOn ? "-di" : "-i", "-w", pid])
+        caffeinateProcess = process
+        caffeinating = true
+        guard seconds > 0 else { return }
+        caffeinateUntil = Date().addingTimeInterval(seconds)
+        caffeinateTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.stopCaffeinate()
+        }
+    }
+
+    func stopCaffeinate() {
+        caffeinateTimer?.cancel()
+        caffeinateTimer = nil
+        caffeinateProcess?.terminate()
+        caffeinateProcess = nil
+        caffeinating = false
+        caffeinateUntil = nil
     }
 
     func toggleHiddenFiles() {
         SystemActions.setHiddenFiles(!hiddenFiles)
         hiddenFiles.toggle()
+    }
+
+    func toggleDesktopIcons() {
+        SystemActions.setDesktopIcons(!desktopIcons)
+        desktopIcons.toggle()
+    }
+
+    func restartDock() {
+        SystemActions.restart("Dock")
+        message = "已重启程序坞"
+    }
+
+    func restartFinder() {
+        SystemActions.restart("Finder")
+        message = "已重启访达"
+    }
+
+    func ejectAll() {
+        guard !ejecting else { return }
+        ejecting = true
+        message = "正在推出磁盘…"
+        Task.detached { [weak self] in
+            let result = SystemActions.ejectAll()
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.ejecting = false
+                if result.ejected == 0 && result.failed.isEmpty {
+                    self.message = "没有可推出的磁盘"
+                } else if result.failed.isEmpty {
+                    self.message = "已推出 \(result.ejected) 个磁盘"
+                } else {
+                    self.message = "已推出 \(result.ejected) 个,\(result.failed.joined(separator: "、")) 正在使用中无法推出"
+                }
+            }
+        }
     }
 
     func toggleDarkMode() {

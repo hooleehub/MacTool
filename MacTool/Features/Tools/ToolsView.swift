@@ -2,9 +2,7 @@ import SwiftUI
 
 struct ToolsView: View {
     @Environment(ToolService.self) private var tools
-    @Environment(ClipboardStore.self) private var clipboard
     @State private var confirmEmptyTrash = false
-    @State private var copiedItemID: UUID?
 
     var body: some View {
         @Bindable var tools = tools
@@ -17,26 +15,33 @@ struct ToolsView: View {
                             tools.lockScreen()
                         }
                         Divider()
+                        actionRow("切换深色模式", systemImage: "moon.circle") {
+                            tools.toggleDarkMode()
+                        }
+                        Divider()
                         actionRow(tools.hiddenFiles ? "隐藏 Finder 隐藏文件" : "显示 Finder 隐藏文件",
                                   systemImage: tools.hiddenFiles ? "eye.slash" : "eye") {
                             tools.toggleHiddenFiles()
                         }
                         Divider()
-                        actionRow("切换深色模式", systemImage: "moon.circle") {
-                            tools.toggleDarkMode()
+                        actionRow(tools.desktopIcons ? "隐藏桌面图标" : "显示桌面图标",
+                                  systemImage: tools.desktopIcons ? "menubar.dock.rectangle" : "macwindow.on.rectangle") {
+                            tools.toggleDesktopIcons()
                         }
                         Divider()
-                        HStack {
-                            Label("防休眠 (caffeinate)", systemImage: "cup.and.saucer")
-                            Spacer()
-                            Toggle("", isOn: Binding(
-                                get: { tools.caffeinating },
-                                set: { _ in tools.toggleCaffeinate() }
-                            ))
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
+                        actionRow(tools.ejecting ? "正在推出…" : "推出所有外置磁盘", systemImage: "eject") {
+                            tools.ejectAll()
                         }
+                        .disabled(tools.ejecting)
+                        Divider()
+                        HStack(spacing: 12) {
+                            Label("重启", systemImage: "arrow.clockwise")
+                            Spacer()
+                            Button("程序坞") { tools.restartDock() }
+                            Button("访达") { tools.restartFinder() }
+                        }
+                        .font(.callout)
+                        .buttonStyle(.borderless)
                         .padding(.vertical, 2)
                         Divider()
                         actionRow(tools.emptyingTrash ? "正在清倒废纸篓…" : "清空废纸篓", systemImage: "trash.slash", tint: .red) {
@@ -68,59 +73,55 @@ struct ToolsView: View {
                         .padding(.horizontal, 4)
                 }
 
-                GroupBox {
-                    if clipboard.items.isEmpty {
-                        Text("暂无记录。复制文本后会显示在这里(仅保存在内存)。")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(clipboard.items) { item in
-                                Button {
-                                    clipboard.copyBack(item)
-                                    copiedItemID = item.id
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                        if copiedItemID == item.id { copiedItemID = nil }
-                                    }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: copiedItemID == item.id ? "checkmark" : "doc.on.clipboard")
-                                            .foregroundStyle(copiedItemID == item.id ? .green : .secondary)
-                                            .frame(width: 14)
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(item.text)
-                                                .lineLimit(2)
-                                                .truncationMode(.tail)
-                                            Text(item.time, style: .time)
-                                                .font(.caption2)
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                        Spacer()
-                                    }
-                                    .font(.caption)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                if item.id != clipboard.items.last?.id {
-                                    Divider()
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Label("剪贴板历史", systemImage: "clipboard")
-                        Spacer()
-                        if !clipboard.items.isEmpty {
-                            Button("清空") { clipboard.clear() }
-                                .buttonStyle(.borderless)
-                                .font(.caption)
-                        }
-                    }
-                }
+                caffeinateCard
+
+                ClipboardSection()
             }
             .padding(10)
+        }
+    }
+
+    private var caffeinateCard: some View {
+        @Bindable var tools = tools
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    if tools.caffeinating {
+                        if let until = tools.caffeinateUntil {
+                            Text("将在 \(until, style: .time) 结束(剩余 \(until, style: .timer))")
+                        } else {
+                            Text("已开启,直到手动关闭")
+                        }
+                    } else {
+                        Text("阻止 Mac 自动进入睡眠")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if tools.caffeinating {
+                        Button("关闭") { tools.stopCaffeinate() }
+                    } else {
+                        Menu("开启") {
+                            ForEach(CaffeinateDuration.allCases) { duration in
+                                Button(duration.title) { tools.startCaffeinate(duration) }
+                            }
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+                }
+                .font(.callout)
+                Toggle("保持屏幕常亮", isOn: $tools.keepDisplayOn)
+                    .font(.caption)
+                    .toggleStyle(.checkbox)
+                    .help("关闭后只阻止系统睡眠(下载、编译不中断),屏幕仍按设置熄灭")
+            }
+        } label: {
+            HStack {
+                Label("防休眠", systemImage: tools.caffeinating ? "cup.and.saucer.fill" : "cup.and.saucer")
+                if tools.caffeinating {
+                    Circle().fill(.green).frame(width: 6, height: 6)
+                }
+            }
         }
     }
 
