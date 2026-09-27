@@ -43,6 +43,8 @@ swift scripts/make-icon.swift   # 重新生成 AppIcon
 - 服务层为 `@Observable @MainActor` 类,通过 `.environment(...)` 注入;`AppSettings` 是 `ObservableObject`
 - 未启用 App Sandbox(需要访问系统指标与用户库目录);签名为本地运行(ad-hoc)
 - 菜单栏 label(`MenuBarExtra` label)只支持单行文本、忽略字体和内嵌图片,自定义排版需用 `ImageRenderer` 渲染成 `isTemplate` 图片(见 `MenuBarMetricsStrip`)
+- 面板(MenuBarExtra .window)失去焦点就会收起:**不要用 `confirmationDialog` / `.alert`**,二次确认用内联的 `ConfirmBar`
+- `~/.Trash` 受 TCC 保护读不到,清倒废纸篓走访达 AppleScript(需"自动化 > 访达"授权)
 - 菜单栏显示项用 `@AppStorage("menuBarShow_*")`;`@EnvironmentObject` 在 label 中不会可靠刷新
 - App 启动时会结束同 Bundle ID 的旧实例(单实例),调试时同时 `open` 和 Xcode Run 不会出现两个图标
 - 启动的子进程要绑定 App 生命周期(如 `caffeinate -w <pid>`),避免 App 退出后残留

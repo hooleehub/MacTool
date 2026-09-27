@@ -12,6 +12,17 @@ struct UninstallerView: View {
             VStack(spacing: 10) {
                 if let target = uninstaller.target {
                     targetCard(target)
+                    if confirmUninstall {
+                        ConfirmBar(
+                            message: "\(target.name) 及所选残留(约 \(ByteFormatter.string(uninstaller.selectedBytes)))将移入废纸篓,可恢复。",
+                            confirmTitle: "卸载",
+                            onConfirm: {
+                                withAnimation { confirmUninstall = false }
+                                uninstaller.uninstall()
+                            },
+                            onCancel: { withAnimation { confirmUninstall = false } }
+                        )
+                    }
                 } else {
                     dropZone
                 }
@@ -31,16 +42,7 @@ struct UninstallerView: View {
             uninstaller.load(url)
             return true
         } isTargeted: { dropTargeted = $0 }
-        .confirmationDialog(
-            "卸载 \(uninstaller.target?.name ?? "")?",
-            isPresented: $confirmUninstall,
-            titleVisibility: .visible
-        ) {
-            Button("移入废纸篓") { uninstaller.uninstall() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("应用及所选残留(约 \(ByteFormatter.string(uninstaller.selectedBytes)))将移入废纸篓,可恢复。")
-        }
+        .onChange(of: uninstaller.target?.appURL) { confirmUninstall = false }
     }
 
     private var dropZone: some View {
@@ -145,7 +147,7 @@ struct UninstallerView: View {
                         ProgressView().controlSize(.small)
                     }
                     Button("卸载 \(ByteFormatter.string(uninstaller.selectedBytes))") {
-                        confirmUninstall = true
+                        withAnimation { confirmUninstall = true }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)

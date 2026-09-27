@@ -39,12 +39,25 @@ struct ToolsView: View {
                         }
                         .padding(.vertical, 2)
                         Divider()
-                        actionRow("清空废纸篓", systemImage: "trash.slash", tint: .red) {
-                            confirmEmptyTrash = true
+                        actionRow(tools.emptyingTrash ? "正在清倒废纸篓…" : "清空废纸篓", systemImage: "trash.slash", tint: .red) {
+                            withAnimation { confirmEmptyTrash = true }
                         }
+                        .disabled(tools.emptyingTrash)
                     }
                 } label: {
                     Label("快捷操作", systemImage: "bolt")
+                }
+
+                if confirmEmptyTrash {
+                    ConfirmBar(
+                        message: "废纸篓中的所有文件将被永久删除,无法恢复。",
+                        confirmTitle: "清空废纸篓",
+                        onConfirm: {
+                            withAnimation { confirmEmptyTrash = false }
+                            tools.emptyTrash()
+                        },
+                        onCancel: { withAnimation { confirmEmptyTrash = false } }
+                    )
                 }
 
                 if let message = tools.message {
@@ -108,16 +121,6 @@ struct ToolsView: View {
                 }
             }
             .padding(10)
-        }
-        .confirmationDialog(
-            "清空废纸篓?",
-            isPresented: $confirmEmptyTrash,
-            titleVisibility: .visible
-        ) {
-            Button("清空废纸篓", role: .destructive) { tools.emptyTrash() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("此操作不可撤销,废纸篓中的文件将被永久删除。")
         }
     }
 

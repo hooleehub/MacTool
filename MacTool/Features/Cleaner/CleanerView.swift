@@ -100,10 +100,23 @@ private struct JunkCleanView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Button("清理所选") { confirmClean = true }
-                        .disabled(cleaner.totalSelectedBytes == 0 || cleaner.cleaning)
+                    Button("清理所选") { withAnimation { confirmClean = true } }
+                        .disabled(cleaner.totalSelectedBytes == 0 || cleaner.cleaning || confirmClean)
                 }
                 .padding(.horizontal, 4)
+
+                if confirmClean {
+                    ConfirmBar(
+                        message: "将约 \(ByteFormatter.string(cleaner.totalSelectedBytes)) 的内容移入废纸篓,之后可从废纸篓恢复。",
+                        confirmTitle: "移入废纸篓",
+                        destructive: false,
+                        onConfirm: {
+                            withAnimation { confirmClean = false }
+                            cleaner.cleanSelected()
+                        },
+                        onCancel: { withAnimation { confirmClean = false } }
+                    )
+                }
 
                 if let message = cleaner.cleanedMessage {
                     Text(message)
@@ -119,16 +132,6 @@ private struct JunkCleanView: View {
             if cleaner.categories.allSatisfy({ $0.sizeBytes == nil }) {
                 cleaner.scanAll()
             }
-        }
-        .confirmationDialog(
-            "将所选内容移入废纸篓?",
-            isPresented: $confirmClean,
-            titleVisibility: .visible
-        ) {
-            Button("移入废纸篓") { cleaner.cleanSelected() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("约 \(ByteFormatter.string(cleaner.totalSelectedBytes)),之后可从废纸篓恢复。")
         }
     }
 }
