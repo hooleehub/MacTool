@@ -4,6 +4,18 @@
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 
+## 截图
+
+菜单栏(指标可自由组合):
+
+![菜单栏](Screenshots/menubar.png)
+
+| 监控 | 电池 |
+|:---:|:---:|
+| ![监控](Screenshots/monitor.png) | ![电池](Screenshots/battery.png) |
+| **清理** | **工具** |
+| ![清理](Screenshots/cleaner.png) | ![工具](Screenshots/tools.png) |
+
 ## 功能
 
 **菜单栏实时指标**(可自由组合)

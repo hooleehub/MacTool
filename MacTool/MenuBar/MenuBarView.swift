@@ -12,6 +12,10 @@ struct MenuBarView: View {
         case tools = "工具"
     }
 
+    init(initialTab: Tab = .monitor) {
+        _tab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $tab) {
