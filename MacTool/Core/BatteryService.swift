@@ -46,7 +46,12 @@ final class BatteryService {
     private(set) var temperatureC: Double?
     private(set) var voltageV: Double?
     private(set) var wattageW: Double?
+    /// 系统当前生效的充电管理策略(充电上限/优化充电)
+    private(set) var chargePolicy: ChargePolicy = .unknown
+    /// 本次开始插电的时间,跨重启持久化;断开电源即清空
+    private(set) var acConnectedSince: Date?
 
+    private static let acSinceKey = "batteryACConnectedSince"
     private var notified80 = false
     private var task: Task<Void, Never>?
     /// 截图/测试用的临时实例不发通知
@@ -54,6 +59,7 @@ final class BatteryService {
 
     init(alertsEnabled: Bool = true) {
         self.alertsEnabled = alertsEnabled
+        acConnectedSince = UserDefaults.standard.object(forKey: Self.acSinceKey) as? Date
     }
 
     var percentText: String { supported ? "\(percent)%" : "--" }
@@ -76,6 +82,19 @@ final class BatteryService {
         return onAC ? "使用电源适配器" : "使用电池"
     }
 
+    /// 插电状态下显示本次已持续插电时长
+    var acDurationText: String? {
+        guard onAC, let acConnectedSince else { return nil }
+        return DurationFormatter.uptime(Date().timeIntervalSince(acConnectedSince))
+    }
+
+    /// 按官方保养建议生成当前状态下的提示
+    var careTips: [CareTip] {
+        BatteryCare.tips(policy: chargePolicy, onAC: onAC,
+                         acDuration: acConnectedSince.map { Date().timeIntervalSince($0) },
+                         temperatureC: temperatureC, healthPercent: healthPercent)
+    }
+
     func start() {
         guard task == nil else { return }
         task = Task { [weak self] in
@@ -89,9 +108,27 @@ final class BatteryService {
     private func refresh() {
         readPowerSources()
         readSmartBattery()
+        chargePolicy = supported ? ChargePolicyReader.read() : .unknown
+        trackACDuration()
         maybeNotify80()
         if supported, alertsEnabled {
             AlertMonitor.shared.check(batteryPercent: percent, onAC: onAC)
+            if let temperatureC {
+                AlertMonitor.shared.check(batteryTemperature: temperatureC)
+            }
+        }
+    }
+
+    /// 记录本次插电的起始时间(写 UserDefaults,重启后继续累计)
+    private func trackACDuration() {
+        if onAC {
+            if acConnectedSince == nil {
+                acConnectedSince = Date()
+                UserDefaults.standard.set(acConnectedSince, forKey: Self.acSinceKey)
+            }
+        } else if acConnectedSince != nil {
+            acConnectedSince = nil
+            UserDefaults.standard.removeObject(forKey: Self.acSinceKey)
         }
     }
 

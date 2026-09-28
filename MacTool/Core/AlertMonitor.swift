@@ -44,11 +44,11 @@ struct ThresholdTrigger {
 }
 
 enum AlertKind: String, CaseIterable, Identifiable {
-    case cpu, memory, disk, lowBattery
+    case cpu, memory, disk, lowBattery, batteryTemp
 
     var id: String { rawValue }
     var storageKey: String { "alert_" + rawValue }
-    var defaultEnabled: Bool { self == .disk || self == .lowBattery }
+    var defaultEnabled: Bool { self == .disk || self == .lowBattery || self == .batteryTemp }
 
     var title: String {
         switch self {
@@ -56,6 +56,7 @@ enum AlertKind: String, CaseIterable, Identifiable {
         case .memory: return "内存占用高于 90%"
         case .disk: return "磁盘可用空间低于 10%"
         case .lowBattery: return "电量低于 20%(未接电源时)"
+        case .batteryTemp: return "电池温度高于 40℃(持续 2 分钟)"
         }
     }
 
@@ -75,6 +76,8 @@ final class AlertMonitor {
     private var disk = ThresholdTrigger(threshold: 0.9, rearm: 0.85)
     /// 以缺电比例计算,方便复用"越大越糟"的触发器
     private var battery = ThresholdTrigger(threshold: 0.8, rearm: 0.75)
+    /// 锂电池长期处于 40℃ 以上会加速老化,须持续高温才提醒
+    private var batteryTemp = ThresholdTrigger(threshold: 40, rearm: 36, sustain: 120)
 
     func check(cpuUsage: Double, memFraction: Double, diskUsed: UInt64, diskTotal: UInt64) {
         if cpu.update(cpuUsage), AlertKind.cpu.isEnabled {
@@ -98,6 +101,13 @@ final class AlertMonitor {
         let deficit = onAC ? 0 : 1 - Double(batteryPercent) / 100
         if battery.update(deficit), AlertKind.lowBattery.isEnabled {
             Notifier.post(id: "alert.battery", title: "电量低", body: "剩余 \(batteryPercent)%,请尽快连接电源。")
+        }
+    }
+
+    func check(batteryTemperature t: Double) {
+        if batteryTemp.update(t), AlertKind.batteryTemp.isEnabled {
+            Notifier.post(id: "alert.batteryTemp", title: "电池温度偏高",
+                          body: String(format: "当前 %.0f℃,建议暂停高负载任务并改善散热。", t))
         }
     }
 }

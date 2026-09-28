@@ -52,6 +52,7 @@ swift scripts/make-icon.swift   # 重新生成 AppIcon
 - 捕获子进程输出时先 `readDataToEndOfFile` 再 `waitUntilExit`(输出 >64KB 会死锁)
 - 单实例保护在 XCTest 宿主中跳过(`XCTestConfigurationFilePath`),否则并行测试会互相结束
 - 电池:新系统 AppleSmartBattery 的容量在 `BatteryData` 子字典,顶层 `MaxCapacity` 是百分比(见 `BatteryMath`);部分机型不提供温度
+- 充电策略(充电上限/优化充电)读 `/Library/Preferences/com.apple.powerd.charging.plist`:`policies` 是 NSKeyedArchive,类名 `ChargeCtrlPolicy`,字段 `reason`/`soclimit`/`terminated` 等(见 `BatteryCare.swift`,`@objc` 同名类顶替解码);只能读不能写,改充电上限要 SMC 特权 helper,跳转系统设置用 `x-apple.systempreferences:com.apple.preference.battery`
 - 锁屏用 login.framework 的 `SACLockScreenImmediate`(dlsym),旧的 CGSession 工具已被系统移除
 - 全局快捷键用 Carbon `RegisterEventHotKey`(`GlobalHotKey`,无需权限);剪贴板弹窗是 `.nonactivatingPanel` 的 `KeyablePanel`,导航键在 `sendEvent` 里拦截;自动粘贴模拟 ⌘V 需辅助功能权限(ad-hoc 签名每次重编译后权限可能失效,需重新勾选)
 - 擦屏模式(`ScreenCleanController`):每屏一个 `.borderless` 窗口铺满 `screen.frame`,level 用 `.screenSaver` 才能盖住菜单栏;多屏共享一个 model 同步换色;要 `NSApp.activate()` 才收得到按键,`sendEvent` 里吞掉所有 keyDown(⌘Q 也不会走到菜单),退出时 `NSApp.deactivate()` 交还焦点

@@ -61,6 +61,84 @@ final class BatteryMathTests: XCTestCase {
     }
 }
 
+final class ChargePolicyTests: XCTestCase {
+    func testManualChargeLimit() {
+        let p = ChargePolicyReader.classify([ChargeCtrlPolicy(reason: "manualChargeLimit", soclimit: 80)])
+        XCTAssertEqual(p, .chargeLimit(80))
+    }
+
+    func testManagedPolicy() {
+        XCTAssertEqual(ChargePolicyReader.classify([ChargeCtrlPolicy(reason: "adaptive", soclimit: 80)]),
+                       .managed(80))
+        // soclimit 为 100/0 时视为读不到上限数值
+        XCTAssertEqual(ChargePolicyReader.classify([ChargeCtrlPolicy(reason: "x", soclimit: 100)]),
+                       .managed(nil))
+    }
+
+    func testTerminatedAndEmpty() {
+        XCTAssertEqual(ChargePolicyReader.classify([]), .none)
+        XCTAssertEqual(ChargePolicyReader.classify([
+            ChargeCtrlPolicy(reason: "manualChargeLimit", soclimit: 80, terminated: true),
+        ]), .none)
+    }
+
+    /// 模拟 powerd 写入的 NSKeyedArchive:类名必须能对上,且走安全解码
+    func testArchiveRoundtrip() throws {
+        let data = try NSKeyedArchiver.archivedData(
+            withRootObject: [ChargeCtrlPolicy(reason: "manualChargeLimit", soclimit: 85)],
+            requiringSecureCoding: true)
+        let classes: [AnyClass] = [NSArray.self, NSMutableArray.self, ChargeCtrlPolicy.self, NSString.self, NSUUID.self]
+        let policies = try XCTUnwrap(
+            NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [ChargeCtrlPolicy])
+        XCTAssertEqual(policies.first?.soclimit, 85)
+        XCTAssertEqual(ChargePolicyReader.classify(policies), .chargeLimit(85))
+    }
+}
+
+final class BatteryCareTests: XCTestCase {
+    private func texts(_ tips: [CareTip]) -> [String] { tips.map(\.text) }
+
+    func testTempWarning() {
+        let tips = BatteryCare.tips(policy: .none, onAC: false, acDuration: nil,
+                                    temperatureC: 42, healthPercent: nil)
+        XCTAssertTrue(tips.contains(where: \.warning))
+    }
+
+    func testLowHealthWarning() {
+        let tips = BatteryCare.tips(policy: .chargeLimit(80), onAC: true, acDuration: nil,
+                                    temperatureC: nil, healthPercent: 75)
+        XCTAssertTrue(tips.contains { $0.warning && $0.text.contains("健康度") })
+    }
+
+    func testPluggedNoPolicySuggestsLimit() {
+        let tips = BatteryCare.tips(policy: .none, onAC: true, acDuration: nil,
+                                    temperatureC: nil, healthPercent: nil)
+        XCTAssertTrue(texts(tips).contains { $0.contains("充电上限") })
+    }
+
+    func testLongPluggedSuggestsDischarge() {
+        let tips = BatteryCare.tips(policy: .none, onAC: true, acDuration: 4 * 86_400,
+                                    temperatureC: nil, healthPercent: nil)
+        XCTAssertTrue(texts(tips).contains { $0.contains("4 天") })
+        // 已开启上限则不再提示放电
+        let limited = BatteryCare.tips(policy: .chargeLimit(80), onAC: true, acDuration: 4 * 86_400,
+                                       temperatureC: nil, healthPercent: nil)
+        XCTAssertFalse(texts(limited).contains { $0.contains("放电") })
+    }
+
+    func testChargeLimitShowsOK() {
+        let tips = BatteryCare.tips(policy: .chargeLimit(80), onAC: true, acDuration: nil,
+                                    temperatureC: nil, healthPercent: nil)
+        XCTAssertTrue(tips.contains { !$0.warning })
+    }
+
+    func testFallbackTip() {
+        let tips = BatteryCare.tips(policy: .chargeLimit(80), onAC: false, acDuration: nil,
+                                    temperatureC: nil, healthPercent: nil)
+        XCTAssertEqual(tips.count, 1)
+    }
+}
+
 final class ProcessParserTests: XCTestCase {
     func testParse() {
         let output = """

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct BatteryView: View {
@@ -5,6 +6,7 @@ struct BatteryView: View {
     @Environment(BluetoothBatteryService.self) private var bluetooth
     @EnvironmentObject private var settings: AppSettings
     @AppStorage(AlertKind.lowBattery.storageKey) private var lowBatteryAlert = AlertKind.lowBattery.defaultEnabled
+    @AppStorage(AlertKind.batteryTemp.storageKey) private var batteryTempAlert = AlertKind.batteryTemp.defaultEnabled
 
     var body: some View {
         ScrollView {
@@ -13,6 +15,7 @@ struct BatteryView: View {
                     overviewCard
                     healthCard
                     detailCard
+                    careCard
                 } else if bluetooth.loaded && bluetooth.devices.isEmpty {
                     ContentUnavailableView(
                         "未检测到电池",
@@ -115,6 +118,34 @@ struct BatteryView: View {
             .frame(maxWidth: .infinity)
         } label: {
             Label("详情", systemImage: "info.circle")
+        }
+    }
+
+    private var careCard: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                row("充电策略", battery.chargePolicy.text)
+                optionalRow("已持续插电", battery.acDurationText)
+                ForEach(battery.careTips) { tip in
+                    Label(tip.text, systemImage: tip.icon)
+                        .font(.caption)
+                        .foregroundStyle(tip.warning ? .orange : .secondary)
+                }
+                Toggle("电池温度高于 40℃ 时提醒我", isOn: $batteryTempAlert)
+                    .font(.callout)
+                HStack {
+                    Spacer()
+                    Button("打开电池设置") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.battery") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("电池保养", systemImage: "leaf")
         }
     }
 
