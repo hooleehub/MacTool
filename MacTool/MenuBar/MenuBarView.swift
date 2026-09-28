@@ -60,16 +60,23 @@ struct MenuBarView: View {
         .frame(width: 380, height: 560)
     }
 
-    /// MenuBarExtra(.window) 的面板是个特殊窗口,打开设置时把它关掉
     private func closeMenuBarWindow() {
         DispatchQueue.main.async {
-            for window in NSApp.windows {
-                let className = NSStringFromClass(type(of: window))
-                if className.contains("MenuBarExtra") || className.contains("StatusBar") {
-                    window.orderOut(nil)
-                }
-            }
+            MenuBarWindow.dismiss()
             NSApp.activate()
+        }
+    }
+}
+
+enum MenuBarWindow {
+    /// MenuBarExtra(.window) 的面板是个特殊窗口,打开设置 / 截图前把它关掉
+    @MainActor
+    static func dismiss() {
+        for window in NSApp.windows {
+            let className = NSStringFromClass(type(of: window))
+            if className.contains("MenuBarExtra") || className.contains("StatusBar") {
+                window.orderOut(nil)
+            }
         }
     }
 }

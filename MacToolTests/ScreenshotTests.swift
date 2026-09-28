@@ -50,6 +50,7 @@ final class ScreenshotTests: XCTestCase {
                 .environment(battery)
                 .environment(cleaner)
                 .environment(clipboard)
+                .environment(ScreenCaptureService())
                 .environment(tools)
                 .environment(processes)
                 .environment(uninstaller)

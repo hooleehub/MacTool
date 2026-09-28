@@ -105,6 +105,12 @@ struct ClipboardSection: View {
                             .buttonStyle(.plain)
                             .contextMenu {
                                 Button(item.pinned ? "取消置顶" : "置顶") { clipboard.togglePin(item) }
+                                if case .image(let png) = item.content, let image = clipboard.thumbnail(for: item) {
+                                    Button("贴到屏幕") {
+                                        MenuBarWindow.dismiss()
+                                        PinController.shared.pin(image, png: png)
+                                    }
+                                }
                                 Button("删除") { clipboard.remove(item) }
                             }
                             .help("点击复制,右键置顶或删除")

@@ -42,6 +42,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            CaptureSettingsSection()
             Section("通知提醒") {
                 ForEach(AlertKind.allCases) { kind in
                     AlertToggle(kind: kind)
@@ -77,6 +78,71 @@ struct SettingsView: View {
         // 从系统设置授权回来后刷新提示
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             accessibilityTrusted = ClipboardPanelController.accessibilityTrusted()
+        }
+    }
+}
+
+private struct CaptureSettingsSection: View {
+    @Environment(ScreenCaptureService.self) private var capture
+    @AppStorage(ScreenshotHotKey.storageKey) private var hotKey = ScreenshotHotKey.defaultValue
+    @AppStorage(CaptureAfterAction.storageKey) private var afterAction = CaptureAfterAction.defaultValue
+    @AppStorage(CaptureActions.saveFolderKey) private var saveFolderPath = ""
+    @AppStorage(ScreenCaptureService.showPreviewKey) private var showPreview = true
+    @AppStorage(ScreenCaptureService.playSoundKey) private var playSound = true
+    @AppStorage(ScreenCaptureService.windowShadowKey) private var windowShadow = true
+    @State private var permitted = ScreenCaptureService.hasPermission
+
+    var body: some View {
+        Section {
+            Picker("区域截图快捷键", selection: $hotKey) {
+                ForEach(ScreenshotHotKey.allCases) { Text($0.title).tag($0) }
+            }
+            .onChange(of: hotKey) { _, preset in GlobalHotKey.shared.apply(preset) }
+            Picker("截图后", selection: $afterAction) {
+                ForEach(CaptureAfterAction.allCases) { Text($0.title).tag($0) }
+            }
+            LabeledContent("保存位置") {
+                HStack {
+                    Text((CaptureActions.saveFolder.path as NSString).abbreviatingWithTildeInPath)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                    Button("更改…", action: chooseFolder)
+                }
+            }
+            Toggle("截图后显示预览浮窗", isOn: $showPreview)
+            Toggle("播放快门声", isOn: $playSound)
+            Toggle("窗口截图带阴影", isOn: $windowShadow)
+            if !permitted {
+                HStack {
+                    Text("截图需要「录屏与系统录音」权限,授权后需重新打开 App")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("去授权") { capture.requestPermission() }
+                }
+                .font(.caption)
+            }
+        } header: {
+            Text("截图")
+        } footer: {
+            Text("区域截图时按空格切换为窗口选择;贴图可拖动、滚轮缩放,双击或 Esc 关闭。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permitted = ScreenCaptureService.hasPermission
+        }
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = CaptureActions.saveFolder
+        panel.prompt = "选择"
+        if panel.runModal() == .OK, let url = panel.url {
+            saveFolderPath = url.path
         }
     }
 }

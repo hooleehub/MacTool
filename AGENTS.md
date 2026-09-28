@@ -9,7 +9,7 @@ macOS 菜单栏常驻的实用工具应用(SwiftUI,最低系统 macOS 15,Apple S
 - **监控附加**: 网络测速、复制 IP、阈值通知(CPU/内存/磁盘)
 - **电池**: 电量、循环次数、健康度、温度/电压/功率,80% 充电提醒、低电量提醒、蓝牙设备电量
 - **清理**: 垃圾清理(缓存/日志/DerivedData/npm 等,移入废纸篓)、应用卸载(扫描 ~/Library 残留)、大文件查找
-- **工具**: 锁屏、擦屏模式(全屏纯色盖所有显示器,吞掉按键方便擦键盘)、Finder 隐藏文件、隐藏桌面图标、深色模式、推出外置磁盘、重启 Dock/访达、定时防休眠、清空废纸篓、剪贴板历史(文本/文件/图片,搜索置顶,全局快捷键弹窗)
+- **工具**: 截图(区域/窗口/全屏/延时,预览浮窗:贴图/复制/OCR/标注/保存,贴图可缩放)、锁屏、擦屏模式(全屏纯色盖所有显示器,吞掉按键方便擦键盘)、Finder 隐藏文件、隐藏桌面图标、深色模式、推出外置磁盘、重启 Dock/访达、定时防休眠、清空废纸篓、剪贴板历史(文本/文件/图片,搜索置顶,全局快捷键弹窗)
 
 ## 构建与验证
 
@@ -54,8 +54,9 @@ swift scripts/make-icon.swift   # 重新生成 AppIcon
 - 电池:新系统 AppleSmartBattery 的容量在 `BatteryData` 子字典,顶层 `MaxCapacity` 是百分比(见 `BatteryMath`);部分机型不提供温度
 - 充电策略(充电上限/优化充电)读 `/Library/Preferences/com.apple.powerd.charging.plist`:`policies` 是 NSKeyedArchive,类名 `ChargeCtrlPolicy`,字段 `reason`/`soclimit`/`terminated` 等(见 `BatteryCare.swift`,`@objc` 同名类顶替解码);只能读不能写,改充电上限要 SMC 特权 helper,跳转系统设置用 `x-apple.systempreferences:com.apple.preference.battery`
 - 锁屏用 login.framework 的 `SACLockScreenImmediate`(dlsym),旧的 CGSession 工具已被系统移除
-- 全局快捷键用 Carbon `RegisterEventHotKey`(`GlobalHotKey`,无需权限);剪贴板弹窗是 `.nonactivatingPanel` 的 `KeyablePanel`,导航键在 `sendEvent` 里拦截;自动粘贴模拟 ⌘V 需辅助功能权限(ad-hoc 签名每次重编译后权限可能失效,需重新勾选)
+- 全局快捷键用 Carbon `RegisterEventHotKey`(`GlobalHotKey`,无需权限),每种用途一个 `HotKeySlot`,预设枚举实现 `HotKeyPreset`,回调放 `GlobalHotKey.shared.actions[slot]`;剪贴板弹窗是 `.nonactivatingPanel` 的 `KeyablePanel`,导航键在 `sendEvent` 里拦截;自动粘贴模拟 ⌘V 需辅助功能权限(ad-hoc 签名每次重编译后权限可能失效,需重新勾选)
 - 擦屏模式(`ScreenCleanController`):每屏一个 `.borderless` 窗口铺满 `screen.frame`,level 用 `.screenSaver` 才能盖住菜单栏;多屏共享一个 model 同步换色;要 `NSApp.activate()` 才收得到按键,`sendEvent` 里吞掉所有 keyDown(⌘Q 也不会走到菜单),退出时 `NSApp.deactivate()` 交还焦点
+- 截图(`ScreenCaptureService`)调用 `/usr/sbin/screencapture`(`-i` 区域、`-i -W` 窗口、`-D n` 全屏,`-T` 延时仅全屏),录屏权限算在本 App 头上,先 `CGPreflightScreenCaptureAccess`,授权后需重开 App(ad-hoc 签名重编译后可能失效);截图前要 `MenuBarWindow.dismiss()` 收起面板;先写到临时目录 `MacToolCaptures/`(启动时清理 1 天前的),再按设置复制/保存;预览浮窗 `CapturePreviewController`、贴图 `PinController`(`.nonactivatingPanel`,AppKit 视图处理拖动/滚轮缩放/右键菜单);OCR 用 Vision `VNRecognizeTextRequest`
 - 剪贴板忽略 `org.nspasteboard.ConcealedType` 等敏感标记;持久化只存文本/文件(`~/Library/Application Support/MacTool/clipboard.json`,0600)
 - 通知统一走 `Notifier.post`;阈值提醒用 `ThresholdTrigger`(持续时长 + 回落重新布防),开关 key 为 `alert_*`;截图/测试实例用 `alertsEnabled: false`
 - 测速用 `/usr/bin/networkQuality -c`(吞吐量单位是 bit/s);蓝牙电量解析 `system_profiler SPBluetoothDataType -json`(慢,仅电池页可见时轮询)

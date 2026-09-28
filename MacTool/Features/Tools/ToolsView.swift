@@ -9,6 +9,8 @@ struct ToolsView: View {
 
         ScrollView {
             VStack(spacing: 10) {
+                CaptureSection()
+
                 GroupBox {
                     VStack(spacing: 4) {
                         actionRow("锁屏", systemImage: "lock.display") {

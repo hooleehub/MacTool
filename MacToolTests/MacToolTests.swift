@@ -309,3 +309,66 @@ final class MetricMathTests: XCTestCase {
         XCTAssertEqual(MetricMath.cpuUsage(prev: s, cur: s), 0)
     }
 }
+
+final class ScreenCaptureTests: XCTestCase {
+    private let output = URL(fileURLWithPath: "/tmp/shot.png")
+
+    func testArguments() {
+        XCTAssertEqual(ScreenCaptureCommand.arguments(mode: .region, output: output), ["-i", "/tmp/shot.png"])
+        XCTAssertEqual(ScreenCaptureCommand.arguments(mode: .window, output: output, sound: false, shadow: false),
+                       ["-i", "-W", "-x", "-o", "/tmp/shot.png"])
+        XCTAssertEqual(ScreenCaptureCommand.arguments(mode: .screen, output: output, delay: 5, display: 2),
+                       ["-D", "2", "-T", "5", "/tmp/shot.png"])
+        // 延时只对全屏生效(交互模式下倒计时没有意义)
+        XCTAssertEqual(ScreenCaptureCommand.arguments(mode: .region, output: output, delay: 5), ["-i", "/tmp/shot.png"])
+    }
+
+    func testFileNameAndUnique() throws {
+        var components = DateComponents()
+        (components.year, components.month, components.day, components.hour, components.minute, components.second) = (2026, 9, 8, 7, 5, 3)
+        let date = try XCTUnwrap(Calendar.current.date(from: components))
+        let name = CaptureFiles.fileName(for: date)
+        XCTAssertEqual(name, "截图 2026-09-08 07.05.03.png")
+
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        XCTAssertEqual(CaptureFiles.uniqueURL(in: folder, fileName: name).lastPathComponent, name)
+        try Data().write(to: folder.appendingPathComponent(name))
+        XCTAssertEqual(CaptureFiles.uniqueURL(in: folder, fileName: name).lastPathComponent, "截图 2026-09-08 07.05.03 (2).png")
+        try Data().write(to: folder.appendingPathComponent("截图 2026-09-08 07.05.03 (2).png"))
+        XCTAssertEqual(CaptureFiles.uniqueURL(in: folder, fileName: name).lastPathComponent, "截图 2026-09-08 07.05.03 (3).png")
+    }
+
+    func testAfterAction() {
+        XCTAssertTrue(CaptureAfterAction.copy.copies)
+        XCTAssertFalse(CaptureAfterAction.copy.saves)
+        XCTAssertFalse(CaptureAfterAction.save.copies)
+        XCTAssertTrue(CaptureAfterAction.copyAndSave.copies && CaptureAfterAction.copyAndSave.saves)
+    }
+
+    func testHotKeyPresetsDistinct() {
+        XCTAssertNil(ScreenshotHotKey.off.carbonKey)
+        let keys = ScreenshotHotKey.allCases.compactMap(\.carbonKey).map { "\($0.keyCode)-\($0.modifiers)" }
+        let clipboardKeys = ClipboardHotKey.allCases.compactMap(\.carbonKey).map { "\($0.keyCode)-\($0.modifiers)" }
+        XCTAssertEqual(Set(keys).count, keys.count)
+        XCTAssertTrue(Set(keys).isDisjoint(with: clipboardKeys))
+        XCTAssertNotEqual(ScreenshotHotKey.slot, ClipboardHotKey.slot)
+    }
+
+    func testRecognizeText() async throws {
+        let size = NSSize(width: 600, height: 160)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            ("Hello MacTool" as NSString).draw(at: NSPoint(x: 20, y: 60), withAttributes: [
+                .font: NSFont.systemFont(ofSize: 48, weight: .semibold),
+                .foregroundColor: NSColor.black,
+            ])
+            return true
+        }
+        let cgImage = try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let text = try await CaptureActions.recognizeText(cgImage)
+        XCTAssertTrue(text.contains("MacTool"), "识别结果:\(text)")
+    }
+}

@@ -24,6 +24,7 @@ struct MacToolApp: App {
     @State private var metrics: SystemMetrics
     @State private var battery: BatteryService
     @State private var clipboard: ClipboardStore
+    @State private var capture: ScreenCaptureService
     @State private var processes = ProcessMonitor()
     @State private var uninstaller = AppUninstaller()
     @State private var cleaner = CleanerService()
@@ -42,12 +43,16 @@ struct MacToolApp: App {
         _metrics = State(initialValue: metrics)
         _battery = State(initialValue: battery)
         _clipboard = State(initialValue: clipboard)
+        let capture = ScreenCaptureService()
+        _capture = State(initialValue: capture)
 
         ClipboardPanelController.shared.store = clipboard
-        GlobalHotKey.shared.action = { ClipboardPanelController.shared.toggle() }
+        GlobalHotKey.shared.actions[.clipboard] = { ClipboardPanelController.shared.toggle() }
+        GlobalHotKey.shared.actions[.screenshot] = { capture.capture(.region) }
         // 测试宿主里不抢占全局快捷键
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             GlobalHotKey.shared.apply(ClipboardHotKey.current)
+            GlobalHotKey.shared.apply(ScreenshotHotKey.current)
         }
     }
 
@@ -58,6 +63,7 @@ struct MacToolApp: App {
                 .environment(battery)
                 .environment(cleaner)
                 .environment(clipboard)
+                .environment(capture)
                 .environment(tools)
                 .environment(processes)
                 .environment(uninstaller)
@@ -74,6 +80,7 @@ struct MacToolApp: App {
         Settings {
             SettingsView()
                 .environment(clipboard)
+                .environment(capture)
                 .environmentObject(settings)
         }
     }
