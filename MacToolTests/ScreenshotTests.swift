@@ -42,6 +42,7 @@ final class ScreenshotTests: XCTestCase {
             ("battery", AnyView(BatteryView())),
             ("cleaner", AnyView(CleanerView())),
             ("tools", AnyView(ToolsView())),
+            ("screenclean", AnyView(ScreenCleanView(model: ScreenCleanModel(), onCycle: {}, onExit: {}))),
         ]
         for (name, page) in pages {
             let view = page

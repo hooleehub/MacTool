@@ -9,7 +9,7 @@ macOS 菜单栏常驻的实用工具应用(SwiftUI,最低系统 macOS 15,Apple S
 - **监控附加**: 网络测速、复制 IP、阈值通知(CPU/内存/磁盘)
 - **电池**: 电量、循环次数、健康度、温度/电压/功率,80% 充电提醒、低电量提醒、蓝牙设备电量
 - **清理**: 垃圾清理(缓存/日志/DerivedData/npm 等,移入废纸篓)、应用卸载(扫描 ~/Library 残留)、大文件查找
-- **工具**: 锁屏、Finder 隐藏文件、隐藏桌面图标、深色模式、推出外置磁盘、重启 Dock/访达、定时防休眠、清空废纸篓、剪贴板历史(文本/文件/图片,搜索置顶,全局快捷键弹窗)
+- **工具**: 锁屏、擦屏模式(全屏纯色盖所有显示器,吞掉按键方便擦键盘)、Finder 隐藏文件、隐藏桌面图标、深色模式、推出外置磁盘、重启 Dock/访达、定时防休眠、清空废纸篓、剪贴板历史(文本/文件/图片,搜索置顶,全局快捷键弹窗)
 
 ## 构建与验证
 
@@ -54,6 +54,7 @@ swift scripts/make-icon.swift   # 重新生成 AppIcon
 - 电池:新系统 AppleSmartBattery 的容量在 `BatteryData` 子字典,顶层 `MaxCapacity` 是百分比(见 `BatteryMath`);部分机型不提供温度
 - 锁屏用 login.framework 的 `SACLockScreenImmediate`(dlsym),旧的 CGSession 工具已被系统移除
 - 全局快捷键用 Carbon `RegisterEventHotKey`(`GlobalHotKey`,无需权限);剪贴板弹窗是 `.nonactivatingPanel` 的 `KeyablePanel`,导航键在 `sendEvent` 里拦截;自动粘贴模拟 ⌘V 需辅助功能权限(ad-hoc 签名每次重编译后权限可能失效,需重新勾选)
+- 擦屏模式(`ScreenCleanController`):每屏一个 `.borderless` 窗口铺满 `screen.frame`,level 用 `.screenSaver` 才能盖住菜单栏;多屏共享一个 model 同步换色;要 `NSApp.activate()` 才收得到按键,`sendEvent` 里吞掉所有 keyDown(⌘Q 也不会走到菜单),退出时 `NSApp.deactivate()` 交还焦点
 - 剪贴板忽略 `org.nspasteboard.ConcealedType` 等敏感标记;持久化只存文本/文件(`~/Library/Application Support/MacTool/clipboard.json`,0600)
 - 通知统一走 `Notifier.post`;阈值提醒用 `ThresholdTrigger`(持续时长 + 回落重新布防),开关 key 为 `alert_*`;截图/测试实例用 `alertsEnabled: false`
 - 测速用 `/usr/bin/networkQuality -c`(吞吐量单位是 bit/s);蓝牙电量解析 `system_profiler SPBluetoothDataType -json`(慢,仅电池页可见时轮询)

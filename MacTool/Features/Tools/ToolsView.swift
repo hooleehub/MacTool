@@ -15,6 +15,11 @@ struct ToolsView: View {
                             tools.lockScreen()
                         }
                         Divider()
+                        actionRow("擦屏模式", systemImage: "sparkles") {
+                            ScreenCleanController.shared.show()
+                        }
+                        .help("全屏显示纯色,方便擦拭屏幕和键盘;Esc 退出")
+                        Divider()
                         actionRow("切换深色模式", systemImage: "moon.circle") {
                             tools.toggleDarkMode()
                         }
